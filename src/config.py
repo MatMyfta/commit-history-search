@@ -9,3 +9,5 @@ class Config:
     OUTPUT_FILE = os.getenv("OUTPUT_FILE", "./data/spring_boot_commits.json")
     LLM_MODEL = os.getenv("LLM_MODEL", "llama3")
     OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+    API_KEY = os.getenv("API_KEY", "ollama")
+    BENCHMARK_SIZE = int(os.getenv("BENCHMARK_SIZE", 20))

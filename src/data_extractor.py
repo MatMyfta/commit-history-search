@@ -14,6 +14,10 @@ class GitDataExtractor:
             return True
         if re.search(r'\b(bump|release|v\d+\.\d+)\b', summary, re.IGNORECASE):
             return True
+
+        if re.match(r'^(closes|fixes|resolves)\s+(gh-|-|#)?\d+$', summary.strip(), re.IGNORECASE):
+            return True
+
         has_source_changes = any(f.endswith('.java') for f in changed_files)
         if not has_source_changes:
             return True
@@ -28,26 +32,32 @@ class GitDataExtractor:
             print(f"Opening local repository at {self.repo_dir}...")
             repo = Repo(self.repo_dir)
 
-        try:
-            active_remote_head = repo.remotes.origin.refs['HEAD'].commit.name
-            default_branch = next(ref.name for ref in repo.remotes.origin.refs if ref.commit.name == active_remote_head and ref.name != 'origin/HEAD')
-            default_branch = default_branch.replace('origin/', '')
-        except Exception:
-            available_refs = [ref.name.replace('origin/', '') for ref in repo.remotes.origin.refs]
-            if 'main' in available_refs:
-                default_branch = 'main'
-            elif 'master' in available_refs:
-                default_branch = 'master'
-            else:
-                default_branch = 'main'
+        target_branch = os.getenv("TARGET_BRANCH", "").strip()
 
-        print(f"Analyzing log streaming for detected branch: {default_branch}...")
+        try:
+            max_commits = int(os.getenv("MAX_COMMITS", "-1"))
+        except ValueError:
+            max_commits = -1
+
+        if target_branch:
+            print(f"Using branch configured in environment: {target_branch}")
+        else:
+            print("TARGET_BRANCH not specified in .env. Attempting branch auto-detection...")
+            try:
+                active_remote_head = repo.remotes.origin.refs['HEAD'].commit.name
+                detected = next(ref.name for ref in repo.remotes.origin.refs if ref.commit.name == active_remote_head and ref.name != 'origin/HEAD')
+                target_branch = detected.replace('origin/', '')
+            except Exception:
+                available_refs = [ref.name.replace('origin/', '') for ref in repo.remotes.origin.refs]
+                target_branch = 'main' if 'main' in available_refs else ('master' if 'master' in available_refs else 'main')
+
+        print(f"Analyzing log streaming for branch: {target_branch}...")
 
         commit_data_list = []
         raw_count = 0
         filtered_count = 0
 
-        for commit in repo.iter_commits(default_branch):
+        for commit in repo.iter_commits(target_branch):
             raw_count += 1
             changed_files = []
             if commit.parents:
@@ -55,27 +65,35 @@ class GitDataExtractor:
                 changed_files = [d.b_path for d in diffs if d.b_path]
 
             raw_summary = commit.summary
-            if isinstance(raw_summary, bytes):
-                summary_str = raw_summary.decode('utf-8', errors='ignore')
-            else:
-                summary_str = str(raw_summary)
+            summary_str = raw_summary.decode('utf-8', errors='ignore') if isinstance(raw_summary, bytes) else str(raw_summary)
 
             if self._is_useless(summary_str, changed_files):
                 filtered_count += 1
                 continue
 
+            raw_message = commit.message
+            full_message = raw_message.decode('utf-8', errors='ignore').strip() if isinstance(raw_message, bytes) else str(raw_message).strip()
+
+            message_lines = full_message.split('\n', 1)
+            commit_body = message_lines[1].strip() if len(message_lines) > 1 else ""
+
             commit_doc = {
                 "id": commit.hexsha,
                 "author": commit.author.name,
                 "date": commit.authored_datetime.isoformat(),
-                "message": commit.message.strip(),
-                "summary": summary_str,
+                "message": full_message,
+                "summary": summary_str.strip(),
+                "body": commit_body,
                 "changed_files": changed_files
             }
             commit_data_list.append(commit_doc)
 
-        print(f"\nExtraction completed!")
-        print(f"Total Streamed Commits: {raw_count}")
+            if max_commits > 0 and len(commit_data_list) >= max_commits:
+                print(f"Reached configured limit of {max_commits} usable documents. Halting stream mining.")
+                break
+
+        print("\nExtraction completed!")
+        print(f"Total Streamed Commits Checked: {raw_count}")
         print(f"Purged/Filtered Noise Commits: {filtered_count}")
         print(f"Clean, Usable System Documents: {len(commit_data_list)}")
 
