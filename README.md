@@ -13,7 +13,7 @@ The system processes queries using a two-stage computational funnel to balance r
    * Sweeps thousands of raw git commits in milliseconds, filtering the repository down to a candidate pool of the top 100 most relevant items.
 2. **Stage 2: Neural Re-ranking (High Precision)**
    * Intercepts the top candidates and passes them to a deep learning engine to evaluate deep semantic dependencies.
-   * Supports two decoupled execution modules: a discriminative **Cross-Encoder** running locally (`bge-reranker-v2-m3`) or a generative **Listwise LLM** pipeline routed via cloud infrastructure (`gemini-2.5-flash`).
+   * Supports two decoupled execution modules: a discriminative **Cross-Encoder** running locally (`bge-reranker-v2-m3`) or a generative **Listwise LLM** pipeline routed via cloud infrastructure.
    * Renders the final globally optimized sequence bounded at `top_n = 10`.
 
 ---
